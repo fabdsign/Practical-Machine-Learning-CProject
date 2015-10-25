@@ -1,0 +1,153 @@
+---
+title: "Course Project Practical Machine Learning"
+author: "Fabio Ventola"
+date: "10/23/2015"
+output: html_document
+---
+###Executive Summary###
+  
+  The goal of this data analysis is read and predict how exercises are executed dividing the correct execution and four main types of unconrrect executions in the target variable "classe" in the *training* dataset. We'll find the best model to fit to data using cross validation. Variables not linked to the accelerometer and NAs have been removed. This reduced the variables from 160 to 53, a more manageable amount. The team who conducted the study, [groupware](http://groupware.les.inf.puc-rio.br/har), choose a Random forest model tho process data but we started with a recursive partitioning model getting poor results in accuracy and estimated out of sample error. The second try was made fitting a random forest model with 3-fold cross validation. This model performed a lot better as the reader will see in the last part of this report. The predictions for Course Project have been made using this model.
+
+
+```{r echo=FALSE}
+#setwd("data")
+```
+
+
+####Load Dedepdencies####
+```{r echo=TRUE}
+library(caret)
+library(rpart)
+library(scales)
+library(randomForest)
+set.seed(7544)
+
+```
+
+####Download and Load Data####
+
+```{r, echo=FALSE}
+fileTrain <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(fileTrain, destfile = "/home/fabiofab/data/training.csv")
+dateDldTrain <- date()
+```
+
+```{r, echo=FALSE}
+fileTest <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(fileTest, destfile = "/home/fabiofab/data/testing.csv")
+dateDldTest <- date()
+```
+
+```{r, echo=TRUE}
+#NAs and blank fields are both marked as NA
+trainData <- read.csv("training.csv", na.strings=c("","NA"))
+```
+
+```{r, echo=TRUE}
+finalTestData <- read.csv("testing.csv", na.strings=c("","NA"))
+```
+####Create Training & Cross Validation Datasets####  
+  
+  The full training dataset it split into a training dataset and a testing dataset. The testing data will be used to cross validate our models.
+  
+```{r echo=TRUE}
+inTrain <- createDataPartition(trainData$classe, p=.7, list=FALSE)
+training <- trainData[inTrain,]
+testing <- trainData[-inTrain,]
+
+summary(trainData$classe)
+```
+####Clean Data#####  
+  
+  Next, time-related & recording variables and the row index variable X are removed because the purpose of the machine learning assignment is to use accelerometer reads to make predictions.
+
+```{r echo=TRUE}
+training <- training[, -c(1:7)]
+testing <- testing[, -c(1:7)]
+finalTestData <- finalTestData[, -c(1:7)]
+```
+  
+  We removed variables which contained a majority of missing values. NAs and blank fields were both marked as NA when the CSV was read.  
+
+```{r echo=FALSE}
+topNAs <- which(colSums(is.na(training)) > nrow(training)/2)
+training <- training[, -topNAs]
+testing <- testing[, -topNAs]
+finalTestData <- finalTestData[, -topNAs]
+```
+
+
+###Machine Learning###
+
+####Recursive partitioning Model####
+  
+  Starting with a simple model Train the decision tree model
+
+```{r echo=FALSE}
+#tree
+rpModelFit <- train(classe ~ ., method="rpart", data=training)
+rpModelFit$finalModel
+```
+
+```{r echo=FALSE}
+#plot tree
+plot(rpModelFit$finalModel, uniform=TRUE, 
+      main="Classification Tree")
+text(rpModelFit$finalModel, use.n=TRUE, all=TRUE, cex=.8)
+```  
+    
+  Predict classe for cross validation dataset
+```{r echo=TRUE}
+rpPreds <- predict(rpModelFit, newdata=testing)
+rpConMatrix <- confusionMatrix(rpPreds, testing$classe)
+rpConMatrix
+```
+  
+  Accuracy appears to be pretty low with Recursive partitioning model
+```{r echo=TRUE}
+rpAccuracy = rpConMatrix$overall[[1]]
+percent(rpAccuracy)
+```
+  
+  Getting the following estimated out of sample error.
+```{r echo=TRUE}
+percent(1.00-rpAccuracy)
+```
+
+
+####Random Forest Model####
+  
+  We can now try a Random Forest model on our dataset.  
+```{r echo=TRUE}
+fitControl <- trainControl(method="cv", number=3, verboseIter=F)
+rfModelFit <- train(classe ~., method="rf", data=training, trControl=fitControl)
+rfModelFit$finalModel
+```
+  
+  Predict classe for cross validation dataset
+```{r echo=TRUE}
+rfPreds <- predict(rfModelFit, newdata=testing)
+rfConMatrix <- confusionMatrix(rfPreds, testing$classe)
+rfConMatrix
+```
+  
+  We get a better accuracy as expected
+```{r echo=TRUE}
+rfAccuracy = rfConMatrix$overall[[1]]
+percent(rfAccuracy)
+```
+  
+  The estimated out of sample error with the cross validation dataset for this model is
+```{r echo=TRUE}
+percent(1.00-rfAccuracy)
+```
+
+
+###Conclusion###
+  
+  The Random Forest model appears to be a better choice compared to Recursive partitioning model and this lead us to select random forest model for the final submissions of the project.
+  
+```{r echo=FALSE}
+submissionPreds <- predict(rfModelFit, newdata=finalTestData)
+submissionPreds
+```
